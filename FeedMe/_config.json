@@ -1,0 +1,7 @@
+{
+  "options": {
+    "crawlInterval": "5",
+    "redditFeed": "https://www.reddit.com/r/yoursubreddit/new/.rss",
+    "discordWebhook": "WebhookUrl"
+  }
+}
