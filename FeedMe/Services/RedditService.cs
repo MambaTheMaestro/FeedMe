@@ -73,21 +73,21 @@ namespace FeedMe.Services
             string address = _config["options:redditFeed"];
             string response = "";
 
-            //Download the latest data. The feed we are using will provide the 24 most recent posts.
+            //Download the latest data. The feed we are using will provide the 25 most recent posts.
             using (var client = new WebClient())
             {
                 response = client.DownloadString(address);
             }
 
             //Remove the top pinned post (usually the subreddit introduction or rules post)
-            string postEntries = response.Substring(response.IndexOf("</entry><entry>") + 1);
+            string postEntries = response.Substring(response.IndexOf("</title><entry>"));
 
             //Create a list of the remaining valid post entries
             string[] entries = postEntries.Split("</entry><entry>");
             List<(string, string, string)> entryList = new();
             List<string> sentEntries = new();
 
-            //If this file exists, read data from it. This file contains the previous 24 post entry IDs so as not to send duplicate messages to the discord server
+            //If this file exists, read data from it. This file contains the previous 25 post entry IDs so as not to send duplicate messages to the discord server
             if (File.Exists("SentData.txt"))
             sentEntries = File.ReadAllLines("SentData.txt").ToList();
 
@@ -109,12 +109,12 @@ namespace FeedMe.Services
             }
 
             //Grab the total number of lines in the file. This is useful only if the file already exists.
-            //It will try to always keep the most recent 24 post IDs in the file, in case there is less than 24 posted per day, again to avoid posting duplicates.
+            //It will try to always keep the most recent 25 post IDs in the file, in case there is less than 25 posted per day, again to avoid posting duplicates.
             //It will remove the oldest line once the threshold is met to conserve disk space and resources.
             int pastEntriesCount = File.ReadAllLines("SentData.txt").Count();
 
-            if (pastEntriesCount > 24)
-                File.WriteAllLines("SentData.txt", File.ReadAllLines("SentData.txt").Skip(pastEntriesCount - 24).ToArray());
+            if (pastEntriesCount > 25)
+                File.WriteAllLines("SentData.txt", File.ReadAllLines("SentData.txt").Skip(pastEntriesCount - 25).ToArray());
 
             return entryList;
         }
