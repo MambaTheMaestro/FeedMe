@@ -82,6 +82,8 @@ namespace FeedMe.Services
             //Remove the top pinned post (usually the subreddit introduction or rules post)
             string postEntries = response.Substring(response.IndexOf("</title><entry>"));
 
+            
+
             //Create a list of the remaining valid post entries
             string[] entries = postEntries.Split("</entry><entry>");
             List<(string, string, string)> entryList = new();
@@ -89,7 +91,9 @@ namespace FeedMe.Services
 
             //If this file exists, read data from it. This file contains the previous 25 post entry IDs so as not to send duplicate messages to the discord server
             if (File.Exists("SentData.txt"))
-            sentEntries = File.ReadAllLines("SentData.txt").ToList();
+            {
+                sentEntries = File.ReadAllLines("SentData.txt").ToList();
+            }
 
             //Using the list of posts created earlier, format and extract only the needed data, then add it to its own list
             foreach (var entry in entries)
@@ -100,10 +104,14 @@ namespace FeedMe.Services
 
                 if (!sentEntries.Contains(postId))
                     entryList.Add((postId, title, externalUrl));
+
+                Console.WriteLine($"[New Entry] ID: {postId}, Title: {title}, URL: {externalUrl}");
             }
 
+            var reorderedList = entryList.ToArray().Reverse();
+
             //Record IDs of the data we are about to send to discord.
-            foreach (var item in entryList)
+            foreach (var item in reorderedList)
             {
                 File.AppendAllText("SentData.txt", $"{item.Item1}" + Environment.NewLine);
             }
@@ -111,19 +119,27 @@ namespace FeedMe.Services
             //Grab the total number of lines in the file. This is useful only if the file already exists.
             //It will try to always keep the most recent 25 post IDs in the file, in case there is less than 25 posted per day, again to avoid posting duplicates.
             //It will remove the oldest line once the threshold is met to conserve disk space and resources.
-            int pastEntriesCount = File.ReadAllLines("SentData.txt").Count();
+            var pastEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x)).ToArray();
 
-            if (pastEntriesCount > 25)
-                File.WriteAllLines("SentData.txt", File.ReadAllLines("SentData.txt").Skip(pastEntriesCount - 25).ToArray());
+            if (pastEntries.Count() > 25)
+                File.WriteAllLines("SentData.txt", pastEntries.Reverse().Take(pastEntries.Length - 1).ToArray());
+
+            entryList.Reverse();
 
             return entryList;
         }
 
         private void SendPostRequest(List<(string, string, string)> postData)
         {
+            //string[] pastEntriesCount = File.ReadAllLines("SentData.txt");
             //For each new post found, send an embed message to the discord webhook.
+            //TODO reverse list
             foreach (var item in postData)
             {
+                //if (pastEntriesCount.Contains(item.Item1.ToLower().Trim()))
+                //{
+                //    return;
+                //}
                 var client = new RestClient(_config["options:discordWebhook"]);
                 var request = new RestRequest();
 
