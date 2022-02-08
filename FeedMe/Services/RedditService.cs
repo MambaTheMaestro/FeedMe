@@ -105,7 +105,7 @@ namespace FeedMe.Services
                 if (!sentEntries.Contains(postId))
                     entryList.Add((postId, title, externalUrl));
 
-                Console.WriteLine($"[New Entry] ID: {postId}, Title: {title}, URL: {externalUrl}");
+                Console.WriteLine($"[Entry {postId}] Title: {title}");
             }
 
             var reorderedList = entryList.ToArray().Reverse();
@@ -121,10 +121,12 @@ namespace FeedMe.Services
             //It will remove the oldest line once the threshold is met to conserve disk space and resources.
             var pastEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x)).ToArray();
 
-            if (pastEntries.Count() > 25)
-                File.WriteAllLines("SentData.txt", pastEntries.Reverse().Take(pastEntries.Length - 1).ToArray());
+            //Console.WriteLine(pastEntries.Count());
 
-            entryList.Reverse();
+            if (pastEntries.Count() > 25)
+                File.WriteAllLines("SentData.txt", pastEntries.Reverse().Take(25).Reverse());
+
+            entryList.ToArray();
 
             return entryList;
         }
@@ -159,7 +161,7 @@ namespace FeedMe.Services
                 request.AddHeader("Content-Type", "application/json");
 
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"Title: {item.Item2}");
+                Console.WriteLine($"ID:  {item.Item1} | Title: {item.Item2}");
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine($"External Url: {item.Item3}");
                 Console.ResetColor();
