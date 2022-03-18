@@ -28,7 +28,7 @@ namespace FeedMe.Services
 
         //It is recommend that you do not crawl faster than every 3 minutes.
         //Due to the rate limiting of requests, it takes approx 2.5 minutes to send a full batch of new posts to discord.
-        public int crawlInterval = 3;
+        public int crawlInterval = 5;
         public async Task StartAsync()
         {
             //Grab crawlInterval from user defined config.
@@ -37,7 +37,7 @@ namespace FeedMe.Services
             bool success = Int32.TryParse(crawlConfigInterval, out number);
 
             //If the user defined value is a valid integer, use it. Otherwise use the default value of 5 (minutes)
-            if (success == true)
+            if (success == true && number >= crawlInterval)
             {
                 crawlInterval = number;
             }
@@ -133,15 +133,9 @@ namespace FeedMe.Services
 
         private void SendPostRequest(List<(string, string, string)> postData)
         {
-            //string[] pastEntriesCount = File.ReadAllLines("SentData.txt");
             //For each new post found, send an embed message to the discord webhook.
-            //TODO reverse list
             foreach (var item in postData)
             {
-                //if (pastEntriesCount.Contains(item.Item1.ToLower().Trim()))
-                //{
-                //    return;
-                //}
                 var client = new RestClient(_config["options:discordWebhook"]);
                 var request = new RestRequest();
 
