@@ -1,15 +1,15 @@
 using Microsoft.Extensions.Configuration;
-using System;
-using System.Threading.Tasks;
-using System.Threading;
-using System.Net;
-using System.IO;
-using System.Timers;
-using System.Collections.Generic;
-using System.Linq;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using RestSharp;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Timers;
 
 namespace FeedMe.Services
 {
@@ -24,17 +24,13 @@ namespace FeedMe.Services
         }
 
         private static System.Timers.Timer timer;
-        public static string rootPath = AppDomain.CurrentDomain.BaseDirectory;
 
-        //It is recommend that you do not crawl faster than every 3 minutes.
-        //Due to the rate limiting of requests, it takes approx 2.5 minutes to send a full batch of new posts to discord.
         public int crawlInterval = 5;
         public async Task StartAsync()
         {
             //Grab crawlInterval from user defined config.
             string crawlConfigInterval = _config["options:crawlInterval"];
-            int number;
-            bool success = Int32.TryParse(crawlConfigInterval, out number);
+            bool success = int.TryParse(crawlConfigInterval, out int number);
 
             //If the user defined value is a valid integer, use it. Otherwise use the default value of 5 (minutes)
             if (success == true && number >= crawlInterval)
@@ -51,51 +47,55 @@ namespace FeedMe.Services
             timer.AutoReset = true;
             timer.Enabled = true;
 
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"[INFO] FeedMe is now Online");
+            Console.ResetColor();
+
             await Task.Delay(Timeout.Infinite);
         }
 
-        private void InitialLatestPost()
+        private async void InitialLatestPost()
         {
-            var fetchedData = GetPostData();
+            var fetchedData = await GetPostDataAsync();
             SendPostRequest(fetchedData);
         }
 
-        private void GetLatestPostEvent(object sender, ElapsedEventArgs e)
+        private async void GetLatestPostEvent(object sender, ElapsedEventArgs e)
         {
-            var fetchedData = GetPostData();
+            var fetchedData = await GetPostDataAsync();
             SendPostRequest(fetchedData);
         }
 
-        //The strings are in the order of "postId", "postTitle" and "postExternalUrl"
-        private List<(string, string, string)> GetPostData()
+        private async Task<List<(string, string, string)>> GetPostDataAsync()
         {
-            //Address is the feed in which we are web scraping.
             string address = _config["options:redditFeed"];
             string response = "";
 
-            //Download the latest data. The feed we are using will provide the 25 most recent posts.
-            using (var client = new WebClient())
+
+            using (var client = new HttpClient())
             {
-                response = client.DownloadString(address);
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0");
+                client.DefaultRequestHeaders.Add("Accept", "text/html");
+                client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br, zstd");
+                client.DefaultRequestHeaders.Add("Accept-Language", "en");
+                client.DefaultRequestHeaders.Add("Cache-Control", "0");
+                client.DefaultRequestHeaders.Add("Dnt", "1");
+
+                using var httpResponse = await client.GetAsync(address).ConfigureAwait(false);
+                var webBytes = await httpResponse.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                response = System.Text.Encoding.UTF8.GetString(webBytes);
             }
 
-            //Remove the top pinned post (usually the subreddit introduction or rules post)
-            string postEntries = response.Substring(response.IndexOf("</title><entry>"));
-
-            
-
-            //Create a list of the remaining valid post entries
+            string postEntries = response[response.IndexOf("</title><entry>")..];
             string[] entries = postEntries.Split("</entry><entry>");
             List<(string, string, string)> entryList = new();
             List<string> sentEntries = new();
 
-            //If this file exists, read data from it. This file contains the previous 25 post entry IDs so as not to send duplicate messages to the discord server
-            if (File.Exists("SentData.txt"))
-            {
-                sentEntries = File.ReadAllLines("SentData.txt").ToList();
-            }
+            if (!File.Exists("SentData.txt")) { File.Create("SentData.txt").Close(); Thread.Sleep(2000); }
 
-            //Using the list of posts created earlier, format and extract only the needed data, then add it to its own list
+            sentEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x)).ToList();
+            
+
             foreach (var entry in entries)
             {
                 string postId = GetBetween(entry, "<id>", "</id>");
@@ -105,26 +105,40 @@ namespace FeedMe.Services
                 if (!sentEntries.Contains(postId))
                     entryList.Add((postId, title, externalUrl));
 
-                Console.WriteLine($"[Entry {postId}] Title: {title}");
             }
 
-            var reorderedList = entryList.ToArray().Reverse();
-
-            //Record IDs of the data we are about to send to discord.
-            foreach (var item in reorderedList)
-            {
-                File.AppendAllText("SentData.txt", $"{item.Item1}" + Environment.NewLine);
-            }
-
-            //Grab the total number of lines in the file. This is useful only if the file already exists.
-            //It will try to always keep the most recent 25 post IDs in the file, in case there is less than 25 posted per day, again to avoid posting duplicates.
-            //It will remove the oldest line once the threshold is met to conserve disk space and resources.
-            var pastEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x)).ToArray();
-
-            //Console.WriteLine(pastEntries.Count());
-
+            var pastEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x) || !x.Equals("\n")).ToArray();
+            string[] oldData;
             if (pastEntries.Count() > 25)
-                File.WriteAllLines("SentData.txt", pastEntries.Reverse().Take(25).Reverse());
+            {
+                oldData = pastEntries.Take(25 - entryList.Count).ToArray();
+                File.Delete("SentData.txt");
+
+                using (var writer = File.OpenWrite("SentData.txt"))
+                {
+                    foreach (var item in entryList)
+                    {
+                        byte[] bytes = Encoding.ASCII.GetBytes($"{item.Item1}\n");
+                        writer.Write(bytes);
+                    }
+                    foreach (var entry in oldData)
+                    {
+                        byte[] oldEntry = Encoding.ASCII.GetBytes($"{entry}\n");
+                        writer.Write(oldEntry);
+                    }
+                }
+            }
+            else
+            {
+                using (var writer = File.OpenWrite("SentData.txt"))
+                {
+                    foreach (var item in entryList)
+                    {
+                        byte[] bytes = Encoding.ASCII.GetBytes($"{item.Item1}\n");
+                        writer.Write(bytes);
+                    }
+                }
+            }
 
             entryList.ToArray();
 
@@ -134,6 +148,7 @@ namespace FeedMe.Services
         private void SendPostRequest(List<(string, string, string)> postData)
         {
             //For each new post found, send an embed message to the discord webhook.
+            postData.Reverse();
             foreach (var item in postData)
             {
                 var client = new RestClient(_config["options:discordWebhook"]);
@@ -155,7 +170,7 @@ namespace FeedMe.Services
                 request.AddHeader("Content-Type", "application/json");
 
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"ID:  {item.Item1} | Title: {item.Item2}");
+                Console.WriteLine($"[Entry {item.Item1}] {item.Item2}");
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine($"External Url: {item.Item3}");
                 Console.ResetColor();
@@ -174,7 +189,7 @@ namespace FeedMe.Services
                 int Start, End;
                 Start = strSource.IndexOf(strStart, 0) + strStart.Length;
                 End = strSource.IndexOf(strEnd, Start);
-                return strSource.Substring(Start, End - Start);
+                return strSource[Start..End];
             }
             return "";
         }
@@ -182,7 +197,10 @@ namespace FeedMe.Services
         private static string Truncate(string value, int maxLength)
         {
             if (string.IsNullOrEmpty(value)) return value;
-            return value.Length <= maxLength ? value : value.Substring(0, maxLength);
+            return value.Length <= maxLength ? value : value[..maxLength];
         }
+
+
+
     }
 }
