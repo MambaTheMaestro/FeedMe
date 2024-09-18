@@ -29,19 +29,19 @@ namespace FeedMe
         public async Task RunAsync()
         {
             var services = new ServiceCollection()
-                .AddSingleton<RedditService>();
+                .AddSingleton<Reddit>();
             ConfigureServices(services);
 
             var provider = services.BuildServiceProvider();
             
-            await provider.GetRequiredService<RedditService>().StartAsync();
+            await provider.GetRequiredService<Reddit>().StartAsync();
             await Task.Delay(Timeout.Infinite);
         }
 
         private void ConfigureServices(IServiceCollection services)
         {
             services
-            .AddSingleton<RedditService>()
+            .AddSingleton<Reddit>()
             .AddSingleton(Configuration);
         }
     }
