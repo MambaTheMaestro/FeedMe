@@ -13,11 +13,11 @@ using System.Timers;
 
 namespace FeedMe.Services
 {
-    public class RedditService
+    public class Reddit
     {
         private readonly IConfigurationRoot _config;
 
-        public RedditService(
+        public Reddit(
             IConfigurationRoot config)
         {
             _config = config;
@@ -93,7 +93,7 @@ namespace FeedMe.Services
 
             if (!File.Exists("SentData.txt")) { File.Create("SentData.txt").Close(); Thread.Sleep(2000); }
 
-            sentEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x)).ToList();
+            sentEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x) || !x.Equals("\n")).ToList();
             
 
             foreach (var entry in entries)
@@ -107,11 +107,10 @@ namespace FeedMe.Services
 
             }
 
-            var pastEntries = File.ReadAllLines("SentData.txt").Where(x => !string.IsNullOrEmpty(x) || !x.Equals("\n")).ToArray();
             string[] oldData;
-            if (pastEntries.Count() > 25)
+            if (sentEntries.Count() > 25)
             {
-                oldData = pastEntries.Take(25 - entryList.Count).ToArray();
+                oldData = sentEntries.Take(25 - entryList.Count).ToArray();
                 File.Delete("SentData.txt");
 
                 using (var writer = File.OpenWrite("SentData.txt"))
@@ -130,12 +129,19 @@ namespace FeedMe.Services
             }
             else
             {
+                oldData = sentEntries.ToArray();
+                File.Delete("SentData.txt");
                 using (var writer = File.OpenWrite("SentData.txt"))
                 {
                     foreach (var item in entryList)
                     {
                         byte[] bytes = Encoding.ASCII.GetBytes($"{item.Item1}\n");
                         writer.Write(bytes);
+                    }
+                    foreach (var entry in oldData)
+                    {
+                        byte[] oldEntry = Encoding.ASCII.GetBytes($"{entry}\n");
+                        writer.Write(oldEntry);
                     }
                 }
             }
