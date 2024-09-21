@@ -167,7 +167,10 @@ namespace FeedMe.Services
                         new
                         {
                             title = Truncate(item.Item2, 256),
-                            description = item.Item3
+                            description = item.Item3,
+                            footer = new {
+                                text = $"[Entry {item.Item1}]"
+                            }
                         }
                     }
                 });
@@ -205,8 +208,5 @@ namespace FeedMe.Services
             if (string.IsNullOrEmpty(value)) return value;
             return value.Length <= maxLength ? value : value[..maxLength];
         }
-
-
-
     }
 }
